@@ -23,6 +23,7 @@ class _CoursesPageState extends State<CoursesPage> with SingleTickerProviderStat
   final CourseService _courseService = CourseService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   bool isPremium = false;
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -77,60 +78,104 @@ class _CoursesPageState extends State<CoursesPage> with SingleTickerProviderStat
         controller: _tabController,
         children: [
           // Available Courses Tab
-          StreamBuilder<List<Course>>(
-            stream: _courseService.getPublishedCourses(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(child: Text('Error: ${snapshot.error}'));
-              }
+          Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search courses...',
+                    prefixIcon: const Icon(Icons.search, color: Colors.black),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.black),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.black, width: 2),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey[400]!),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[100],
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value.toLowerCase();
+                    });
+                  },
+                ),
+              ),
+              Expanded(
+                child: StreamBuilder<List<Course>>(
+                  stream: _courseService.getPublishedCourses(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(child: Text('Error: ${snapshot.error}'));
+                    }
 
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
 
-              final courses = snapshot.data ?? [];
+                    final courses = snapshot.data ?? [];
+                    final filteredCourses = courses.where((course) {
+                      return course.title.toLowerCase().contains(_searchQuery) ||
+                          course.description.toLowerCase().contains(_searchQuery) ||
+                          course.creatorName.toLowerCase().contains(_searchQuery);
+                    }).toList();
 
-              if (courses.isEmpty) {
-                return const Center(
-                  child: Text('No courses available'),
-                );
-              }
+                    if (filteredCourses.isEmpty) {
+                      return Center(
+                        child: Text(
+                          _searchQuery.isEmpty
+                              ? 'No courses available'
+                              : 'No courses found matching "$_searchQuery"',
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                      );
+                    }
 
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: courses.length,
-                itemBuilder: (context, index) {
-                  final course = courses[index];
-                  final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-                  final alreadySubscribed = course.subscribers.contains(currentUserId);
-                  return CourseCard(
-                    course: course,
-                    isSubscribed: alreadySubscribed,
-                    onSubscribe: () {
-                      if (alreadySubscribed) {
-                        // Show popup message
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Already Subscribed'),
-                            content: const Text('You are already subscribed (:'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('OK'),
-                              ),
-                            ],
-                          ),
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: filteredCourses.length,
+                      itemBuilder: (context, index) {
+                        final course = filteredCourses[index];
+                        final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+                        final alreadySubscribed = course.subscribers.contains(currentUserId);
+                        return CourseCard(
+                          course: course,
+                          isSubscribed: alreadySubscribed,
+                          onSubscribe: () {
+                            if (alreadySubscribed) {
+                              // Show popup message
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Already Subscribed'),
+                                  content: const Text('You are already subscribed (:'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('OK'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            } else {
+                              _courseService.subscribeToCourse(course.id);
+                            }
+                          },
+                          onUnsubscribe: () => _courseService.unsubscribeFromCourse(course.id),
                         );
-                      } else {
-                        _courseService.subscribeToCourse(course.id);
-                      }
-                    },
-                    onUnsubscribe: () => _courseService.unsubscribeFromCourse(course.id),
-                  );
-                },
-              );
-            },
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
           // My Courses Tab
           StreamBuilder<List<Course>>(

@@ -1,3 +1,4 @@
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // Helper functions
@@ -14,12 +15,34 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.plan in ['Premium User', 'Gym Owner'];
     }
 
+    function isGymOwner() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.plan == 'Gym Owner';
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
     // User profiles
     match /users/{userId} {
       // Anyone can read user profiles
       allow read: if isAuthenticated();
-      // Only the owner can update their profile
-      allow update: if isOwner(userId);
+      
+      // Allow creation of user profile during registration
+      allow create: if isAuthenticated() 
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && request.resource.data.email is string
+        && request.resource.data.name is string
+        && request.resource.data.plan is string;
+      
+      // Allow users to update their own profile or admins to update any profile
+      allow update: if isOwner(userId) || isAdmin();
+      
+      // Allow admins to delete any user profile
+      allow delete: if isAdmin();
       
       // Following subcollection
       match /following/{followingId} {
@@ -38,6 +61,41 @@ service cloud.firestore {
       }
     }
 
+    // Gym owners collection
+    match /gym_owners/{gymId} {
+      // Anyone can read gym profiles
+      allow read: if isAuthenticated();
+      
+      // Allow creation of gym owner profile during registration
+      allow create: if isAuthenticated() 
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.gymName is string
+        && request.resource.data.description is string
+        && request.resource.data.photoUrls is list
+        && request.resource.data.videoUrls is list
+        && request.resource.data.address is string
+        && request.resource.data.location is latlng
+        && request.resource.data.phoneNumber is string
+        && request.resource.data.email is string
+        && request.resource.data.amenities is list
+        && request.resource.data.businessHours is map
+        && request.resource.data.rating is number
+        && request.resource.data.totalRatings is number
+        && request.resource.data.followers is list
+        && request.resource.data.posts is list
+        && request.resource.data.isVerified is bool
+        && request.resource.data.membershipPlans is list
+        && request.resource.data.pricing is map
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      
+      // Only the gym owner or admin can update their profile
+      allow update: if (isGymOwner() && resource.data.userId == request.auth.uid) || isAdmin();
+      
+      // Only the gym owner or admin can delete their profile
+      allow delete: if (isGymOwner() && resource.data.userId == request.auth.uid) || isAdmin();
+    }
+
     // Posts collection
     match /posts/{postId} {
       // Anyone can read posts
@@ -51,14 +109,14 @@ service cloud.firestore {
         && request.resource.data.likes is number
         && request.resource.data.likedBy is list;
       
-      // Only post owner can update most fields
+      // Only post owner or admin can update most fields
       // But anyone can update likes and likedBy
-      allow update: if isOwner(resource.data.userId)
+      allow update: if isOwner(resource.data.userId) || isAdmin()
         || (request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['likes', 'likedBy']));
       
-      // Only post owner can delete their posts
-      allow delete: if isOwner(resource.data.userId);
+      // Only post owner or admin can delete posts
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
     }
 
     // Courses collection
@@ -80,13 +138,13 @@ service cloud.firestore {
         && request.resource.data.createdAt is timestamp
         && request.resource.data.isPublished is bool;
       
-      // Only course creator can update their courses
-      allow update: if isOwner(resource.data.creatorId)
+      // Only course creator or admin can update their courses
+      allow update: if isOwner(resource.data.creatorId) || isAdmin()
         || (request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['subscribers', 'isPublished']));
       
-      // Only course creator can delete their courses
-      allow delete: if isOwner(resource.data.creatorId);
+      // Only course creator or admin can delete their courses
+      allow delete: if isOwner(resource.data.creatorId) || isAdmin();
     }
 
     // Chats collection
@@ -141,6 +199,88 @@ service cloud.firestore {
           && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
           && resource.data.senderId == request.auth.uid;
       }
+    }
+
+    // Map-related collections
+    match /gym_locations/{locationId} {
+      // Anyone can read gym locations
+      allow read: if isAuthenticated();
+      
+      // Only gym owners can create location entries
+      allow create: if isGymOwner()
+        && request.resource.data.ownerId == request.auth.uid;
+      
+      // Only gym owners or admin can update their location data
+      allow update: if (isGymOwner() && resource.data.ownerId == request.auth.uid) || isAdmin();
+      
+      // Only gym owners or admin can delete their location entries
+      allow delete: if (isGymOwner() && resource.data.ownerId == request.auth.uid) || isAdmin();
+    }
+
+    // Gym map data collection
+    match /gym_map_data/{gymId} {
+      // Anyone can read gym map data
+      allow read: if isAuthenticated();
+      
+      // Gym owners or admin can create and update their map data
+      allow create, update: if (isGymOwner() && request.resource.data.ownerId == request.auth.uid) || isAdmin();
+      
+      // Gym owners or admin can delete their map data
+      allow delete: if (isGymOwner() && resource.data.ownerId == request.auth.uid) || isAdmin();
+    }
+
+    // Gym ratings collection
+    match /gym_ratings/{ratingId} {
+      // Anyone can read ratings
+      allow read: if isAuthenticated();
+      
+      // Authenticated users can create ratings
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
+      
+      // Users can only update their own ratings
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      
+      // Users can only delete their own ratings
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Gym media collection
+    match /gym_media/{mediaId} {
+      // Anyone can read gym media
+      allow read: if isAuthenticated();
+      
+      // Only gym owners can add media
+      allow create: if isGymOwner()
+        && request.resource.data.ownerId == request.auth.uid;
+      
+      // Only gym owners or admin can update their media
+      allow update: if (isGymOwner() && resource.data.ownerId == request.auth.uid) || isAdmin();
+      
+      // Only gym owners or admin can delete their media
+      allow delete: if (isGymOwner() && resource.data.ownerId == request.auth.uid) || isAdmin();
+    }
+
+    // Reports collection
+    match /reports/{reportId} {
+      // Only admins can read reports
+      allow read: if isAdmin();
+      
+      // Authenticated users can create reports
+      allow create: if isAuthenticated() 
+        && request.resource.data.postId is string
+        && request.resource.data.reportedBy == request.auth.uid
+        && request.resource.data.timestamp is timestamp
+        && request.resource.data.reason is string
+        && (!('status' in request.resource.data) || request.resource.data.status == 'pending');
+      
+      // Only admins can update reports (to mark as resolved or dismissed)
+      allow update: if isAdmin() 
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolvedAt', 'dismissedAt'])
+        && request.resource.data.status in ['resolved', 'dismissed'];
+      
+      // Only admins can delete reports
+      allow delete: if isAdmin();
     }
   }
 } 

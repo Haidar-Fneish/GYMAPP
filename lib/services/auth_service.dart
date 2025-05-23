@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/gym_owner_profile.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -61,9 +62,12 @@ class AuthService {
       );
       print('User created successfully with UID: ${userCredential.user?.uid}');
 
-      // Then create the user document in Firestore with the plan
-      await _firestore.collection('users').doc(userCredential.user!.uid).set({
-        'uid': userCredential.user!.uid,
+      final userId = userCredential.user!.uid;
+      final now = FieldValue.serverTimestamp();
+
+      // Create the user document in Firestore
+      await _firestore.collection('users').doc(userId).set({
+        'uid': userId,
         'name': name,
         'email': email,
         'plan': plan,
@@ -76,9 +80,56 @@ class AuthService {
           'Squat': 0.0,
           'Deadlift': 0.0,
         },
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': now,
       });
       print('User document created in Firestore');
+
+      // If the plan is 'Gym Owner', create a gym owner profile
+      if (plan == 'Gym Owner') {
+        final gymOwnerRef = _firestore.collection('gym_owners').doc();
+        final gymOwnerProfile = GymOwnerProfile(
+          id: gymOwnerRef.id,
+          userId: userId,
+          gymName: '$name\'s Gym',
+          description: 'Welcome to our gym! We are currently setting up our profile.',
+          photoUrls: [],
+          videoUrls: [],
+          address: '',
+          location: const GeoPoint(0, 0), // Default location
+          phoneNumber: '',
+          email: email,
+          amenities: [],
+          businessHours: {
+            'Monday': '9:00 AM - 9:00 PM',
+            'Tuesday': '9:00 AM - 9:00 PM',
+            'Wednesday': '9:00 AM - 9:00 PM',
+            'Thursday': '9:00 AM - 9:00 PM',
+            'Friday': '9:00 AM - 9:00 PM',
+            'Saturday': '10:00 AM - 6:00 PM',
+            'Sunday': '10:00 AM - 6:00 PM',
+          },
+          rating: 0.0,
+          totalRatings: 0,
+          followers: [],
+          posts: [],
+          isVerified: false,
+          membershipPlans: [],
+          pricing: {},
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+
+        // Create the gym owner profile
+        await gymOwnerRef.set(gymOwnerProfile.toMap());
+        print('Gym owner profile created with ID: ${gymOwnerRef.id}');
+        
+        // Update user document with gym owner role and profile ID
+        await _firestore.collection('users').doc(userId).update({
+          'role': 'gym_owner',
+          'gymOwnerProfileId': gymOwnerRef.id,
+        });
+        print('User document updated with gym owner role and profile ID');
+      }
 
       return userCredential;
     } on FirebaseAuthException catch (e) {

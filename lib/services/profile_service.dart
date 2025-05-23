@@ -26,6 +26,7 @@ class ProfileService {
     required String name,
     required String bio,
     File? profilePicture,
+    File? video,
     double? weight,
     double? height,
     double? bodyFat,
@@ -33,6 +34,7 @@ class ProfileService {
   }) async {
     final userId = _auth.currentUser!.uid;
     String? profilePictureUrl;
+    String? videoUrl;
 
     if (profilePicture != null) {
       final ref = _storage.ref().child('profile_pictures/$userId.jpg');
@@ -40,10 +42,17 @@ class ProfileService {
       profilePictureUrl = await ref.getDownloadURL();
     }
 
+    if (video != null) {
+      final ref = _storage.ref().child('profile_videos/$userId.mp4');
+      await ref.putFile(video);
+      videoUrl = await ref.getDownloadURL();
+    }
+
     await _firestore.collection('users').doc(userId).update({
       'name': name,
       'bio': bio,
       if (profilePictureUrl != null) 'profilePictureUrl': profilePictureUrl,
+      if (videoUrl != null) 'videoUrl': videoUrl,
       if (weight != null) 'weight': weight,
       if (height != null) 'height': height,
       if (bodyFat != null) 'bodyFat': bodyFat,

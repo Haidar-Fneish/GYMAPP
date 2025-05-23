@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:video_player/video_player.dart';
 import 'models/user_profile.dart';
 import 'services/profile_service.dart';
 
@@ -26,8 +27,11 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   final TextEditingController _bioController = TextEditingController();
   UserProfile? _userProfile;
   File? _selectedImage;
+  File? _selectedVideo;
   List<UserProfile> followingList = [];
   bool isLoadingFollowing = false;
+  VideoPlayerController? _videoController;
+  bool _isVideoInitialized = false;
   
   // Stats
   double weight = 85.5;
@@ -194,8 +198,25 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
   @override
   void dispose() {
+    _videoController?.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initializeVideo(String videoUrl) async {
+    _videoController?.dispose();
+    _videoController = VideoPlayerController.network(videoUrl);
+    try {
+      await _videoController!.initialize();
+      setState(() {
+        _isVideoInitialized = true;
+      });
+    } catch (e) {
+      print('Error initializing video: $e');
+      setState(() {
+        _isVideoInitialized = false;
+      });
+    }
   }
 
   Future<void> _loadUserProfile() async {
@@ -207,8 +228,10 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         _nameController.text = profile.name;
         _bioController.text = profile.bio;
       });
+      if (profile.videoUrl != null) {
+        await _initializeVideo(profile.videoUrl!);
+      }
       if (widget.userId != null) {
-        // Check if current user is following this profile
         isFollowing = await _profileService.isFollowing(widget.userId!);
       }
     } catch (e) {
@@ -228,12 +251,21 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     }
   }
 
+  Future<void> _pickVideo() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? video = await picker.pickVideo(source: ImageSource.gallery);
+    if (video != null) {
+      setState(() => _selectedVideo = File(video.path));
+    }
+  }
+
   Future<void> _saveProfile() async {
     try {
       await _profileService.updateProfile(
         name: _nameController.text,
         bio: _bioController.text,
         profilePicture: _selectedImage,
+        video: _selectedVideo,
         weight: _userProfile?.weight,
         height: _userProfile?.height,
         bodyFat: _userProfile?.bodyFat,
@@ -584,6 +616,72 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     );
   }
 
+  Widget _buildVideoSection() {
+    if (_userProfile!.videoUrl != null) {
+      if (_isVideoInitialized && _videoController != null) {
+        return AspectRatio(
+          aspectRatio: _videoController!.value.aspectRatio,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              VideoPlayer(_videoController!),
+              IconButton(
+                icon: Icon(
+                  _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                  color: Colors.white,
+                  size: 50,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _videoController!.value.isPlaying
+                        ? _videoController!.pause()
+                        : _videoController!.play();
+                  });
+                },
+              ),
+            ],
+          ),
+        );
+      } else {
+        return Container(
+          height: 200,
+          color: Colors.grey[200],
+          child: const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+      }
+    } else {
+      return Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.video_library,
+                size: 40,
+                color: Colors.grey,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No video uploaded',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
@@ -823,66 +921,121 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
                 const SizedBox(height: 20),
 
-                // Stats Section
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.fitness_center, color: Colors.black),
-                          const SizedBox(width: 8),
-                          const Text(
-                            "Fitness Stats",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
+                // Stats Section or Video for Gym Owners
+                if (_userProfile!.plan == 'Gym Owner')
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.video_library, color: Colors.black),
+                            const SizedBox(width: 8),
+                            const Text(
+                              "Gym Video",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      _buildStatRow("Weight", "${_userProfile!.weight.toStringAsFixed(1)} kg", isEditing && isCurrentUser),
-                      _buildStatRow("Height", "${_userProfile!.height.toStringAsFixed(2)} m", isEditing && isCurrentUser),
-                      _buildStatRow("Body Fat", "${_userProfile!.bodyFat.toStringAsFixed(1)}%", isEditing && isCurrentUser),
-                      const Divider(height: 30),
-                      Row(
-                        children: [
-                          const Icon(Icons.emoji_events, color: Colors.black),
-                          const SizedBox(width: 8),
-                          const Text(
-                            "Personal Records",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
+                            if (isEditing && isCurrentUser)
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton.icon(
+                                    onPressed: _pickVideo,
+                                    icon: const Icon(Icons.upload, color: Colors.black),
+                                    label: const Text(
+                                      'Upload Video',
+                                      style: TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        _buildVideoSection(),
+                      ],
+                    ),
+                  )
+                else
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.fitness_center, color: Colors.black),
+                            const SizedBox(width: 8),
+                            const Text(
+                              "Fitness Stats",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      ..._userProfile!.prs.entries.map((entry) => _buildStatRow(
-                        entry.key,
-                        "${entry.value.toStringAsFixed(1)} kg",
-                        isEditing && isCurrentUser,
-                      )),
-                    ],
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        _buildStatRow("Weight", "${_userProfile!.weight.toStringAsFixed(1)} kg", isEditing && isCurrentUser),
+                        _buildStatRow("Height", "${_userProfile!.height.toStringAsFixed(2)} m", isEditing && isCurrentUser),
+                        _buildStatRow("Body Fat", "${_userProfile!.bodyFat.toStringAsFixed(1)}%", isEditing && isCurrentUser),
+                        const Divider(height: 30),
+                        Row(
+                          children: [
+                            const Icon(Icons.emoji_events, color: Colors.black),
+                            const SizedBox(width: 8),
+                            const Text(
+                              "Personal Records",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        ..._userProfile!.prs.entries.map((entry) => _buildStatRow(
+                          entry.key,
+                          "${entry.value.toStringAsFixed(1)} kg",
+                          isEditing && isCurrentUser,
+                        )),
+                      ],
+                    ),
                   ),
-                ),
                 const SizedBox(height: 20),
               ],
             ),

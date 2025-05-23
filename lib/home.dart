@@ -75,10 +75,38 @@ class _HomepageState extends State<Homepage> {
   }
 }
 
-class DrawerContent extends StatelessWidget {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+class DrawerContent extends StatefulWidget {
+  const DrawerContent({Key? key}) : super(key: key);
 
-  DrawerContent({Key? key}) : super(key: key);
+  @override
+  State<DrawerContent> createState() => _DrawerContentState();
+}
+
+class _DrawerContentState extends State<DrawerContent> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  String? _userPlan;
+  bool _isAdmin = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserPlan();
+  }
+
+  Future<void> _loadUserPlan() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      
+      setState(() {
+        _userPlan = userDoc.data()?['plan'];
+        _isAdmin = userDoc.data()?['isAdmin'] == true;
+      });
+    }
+  }
 
   Future<void> _showLogoutConfirmation(BuildContext context) async {
     return showDialog(
@@ -168,6 +196,24 @@ class DrawerContent extends StatelessWidget {
               );
             },
           ),
+          if (_isAdmin)
+            ListTile(
+              leading: const Icon(Icons.admin_panel_settings),
+              title: const Text('Admin Panel'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/admin');
+              },
+            ),
+          if (_userPlan?.toLowerCase() == 'gym owner')
+            ListTile(
+              leading: const Icon(Icons.fitness_center),
+              title: const Text('Gym Management'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/gym-management');
+              },
+            ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
