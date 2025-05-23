@@ -10,6 +10,7 @@ class UserProfile {
   final double bodyFat;
   final Map<String, double> prs;
   final String plan;
+  final String? videoUrl;
 
   UserProfile({
     required this.uid,
@@ -21,6 +22,7 @@ class UserProfile {
     required this.bodyFat,
     required this.prs,
     required this.plan,
+    this.videoUrl,
   });
 
   factory UserProfile.fromFirestore(DocumentSnapshot doc) {
@@ -35,6 +37,7 @@ class UserProfile {
       bodyFat: (data['bodyFat'] ?? 0.0).toDouble(),
       prs: Map<String, double>.from(data['prs'] ?? {}),
       plan: data['plan'] ?? 'Basic User',
+      videoUrl: data['videoUrl'],
     );
   }
 
@@ -49,6 +52,7 @@ class UserProfile {
       bodyFat: (map['bodyFat'] as num?)?.toDouble() ?? 0.0,
       prs: Map<String, double>.from(map['prs'] as Map? ?? {}),
       plan: map['plan'] as String? ?? 'Basic Plan',
+      videoUrl: map['videoUrl'] as String?,
     );
   }
 
@@ -63,6 +67,7 @@ class UserProfile {
       'bodyFat': bodyFat,
       'prs': prs,
       'plan': plan,
+      'videoUrl': videoUrl,
     };
   }
 } 

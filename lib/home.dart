@@ -75,10 +75,34 @@ class _HomepageState extends State<Homepage> {
   }
 }
 
-class DrawerContent extends StatelessWidget {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+class DrawerContent extends StatefulWidget {
+  const DrawerContent({Key? key}) : super(key: key);
 
-  DrawerContent({Key? key}) : super(key: key);
+  @override
+  State<DrawerContent> createState() => _DrawerContentState();
+}
+
+class _DrawerContentState extends State<DrawerContent> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  String? _userPlan;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserPlan();
+  }
+
+  Future<void> _loadUserPlan() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (doc.exists) {
+        setState(() {
+          _userPlan = doc.data()?['plan'] as String?;
+        });
+      }
+    }
+  }
 
   Future<void> _showLogoutConfirmation(BuildContext context) async {
     return showDialog(
@@ -168,6 +192,15 @@ class DrawerContent extends StatelessWidget {
               );
             },
           ),
+          if (_userPlan == 'gym_owner')
+            ListTile(
+              leading: const Icon(Icons.fitness_center),
+              title: const Text('Gym Management'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/gym-management');
+              },
+            ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),

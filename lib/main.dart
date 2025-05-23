@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:gym_app_project/home.dart';
 import 'package:gym_app_project/auth/auth_page.dart';
+import 'package:gym_app_project/screens/profile.dart';
+import 'package:gym_app_project/screens/gym_management.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -47,6 +49,10 @@ class MyApp extends StatelessWidget {
         ),
       ),
       home: const AuthWrapper(),
+      routes: {
+        '/profile': (context) => const ProfileScreen(),
+        '/gym-management': (context) => const GymManagementScreen(),
+      },
     );
   }
 }
