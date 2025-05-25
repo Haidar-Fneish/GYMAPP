@@ -23,6 +23,23 @@ class ChatService {
     });
   }
 
+  // Get all chats for a course owner/instructor
+  Stream<List<Chat>> getInstructorChats() {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return Stream.value([]);
+
+    return _firestore
+        .collection('chats')
+        .where('instructorId', isEqualTo: userId)
+        .orderBy('lastMessageTime', descending: true)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs
+          .map((doc) => Chat.fromMap({...doc.data(), 'id': doc.id}))
+          .toList();
+    });
+  }
+
   // Get messages for a specific chat
   Stream<List<Message>> getChatMessages(String chatId) {
     return _firestore
@@ -33,7 +50,11 @@ class ChatService {
         .snapshots()
         .map((snapshot) {
       return snapshot.docs
-          .map((doc) => Message.fromMap({...doc.data(), 'id': doc.id}))
+          .map((doc) => Message.fromMap({
+                ...doc.data(),
+                'id': doc.id,
+                'chatId': chatId,
+              }))
           .toList();
     });
   }
@@ -47,6 +68,18 @@ class ChatService {
     required String instructorId,
     required String instructorName,
   }) async {
+    // Check if chat already exists
+    final existingChat = await _firestore
+        .collection('chats')
+        .where('courseId', isEqualTo: courseId)
+        .where('studentId', isEqualTo: studentId)
+        .where('instructorId', isEqualTo: instructorId)
+        .get();
+
+    if (existingChat.docs.isNotEmpty) {
+      return existingChat.docs.first.id;
+    }
+
     final chatRef = await _firestore.collection('chats').add({
       'courseId': courseId,
       'courseTitle': courseTitle,
@@ -58,6 +91,10 @@ class ChatService {
       'lastMessageTime': FieldValue.serverTimestamp(),
       'lastMessage': 'Chat started',
       'isRead': false,
+      'unreadCount': {
+        studentId: 0,
+        instructorId: 0,
+      },
     });
 
     return chatRef.id;
@@ -76,12 +113,22 @@ class ChatService {
     final userData = userDoc.data();
     if (userData == null) throw Exception('User data not found');
 
+    // Get chat data
+    final chatDoc = await _firestore.collection('chats').doc(chatId).get();
+    final chatData = chatDoc.data();
+    if (chatData == null) throw Exception('Chat not found');
+
+    final batch = _firestore.batch();
+    final chatRef = _firestore.collection('chats').doc(chatId);
+    final messageRef = chatRef.collection('messages').doc();
+
+    // Determine the other participant
+    final otherParticipantId = chatData['studentId'] == userId
+        ? chatData['instructorId']
+        : chatData['studentId'];
+
     // Add message to chat
-    await _firestore
-        .collection('chats')
-        .doc(chatId)
-        .collection('messages')
-        .add({
+    batch.set(messageRef, {
       'senderId': userId,
       'senderName': userData['name'],
       'content': content,
@@ -90,27 +137,39 @@ class ChatService {
     });
 
     // Update chat metadata
-    await _firestore.collection('chats').doc(chatId).update({
+    batch.update(chatRef, {
       'lastMessageTime': FieldValue.serverTimestamp(),
       'lastMessage': content,
       'isRead': false,
+      'unreadCount.${otherParticipantId}': FieldValue.increment(1),
     });
+
+    // Commit both operations atomically
+    await batch.commit();
   }
 
   // Mark chat as read
   Future<void> markChatAsRead(String chatId) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return;
+
     await _firestore.collection('chats').doc(chatId).update({
       'isRead': true,
+      'unreadCount.${userId}': 0,
     });
   }
 
   // Mark messages as read
   Future<void> markMessagesAsRead(String chatId) async {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return;
+
     final messages = await _firestore
         .collection('chats')
         .doc(chatId)
         .collection('messages')
         .where('isRead', isEqualTo: false)
+        .where('senderId', isNotEqualTo: userId)
         .get();
 
     final batch = _firestore.batch();
@@ -118,5 +177,25 @@ class ChatService {
       batch.update(doc.reference, {'isRead': true});
     }
     await batch.commit();
+  }
+
+  // Get unread message count for a user
+  Stream<int> getUnreadMessageCount() {
+    final userId = _auth.currentUser?.uid;
+    if (userId == null) return Stream.value(0);
+
+    return _firestore
+        .collection('chats')
+        .where('participants', arrayContains: userId)
+        .snapshots()
+        .map((snapshot) {
+      int total = 0;
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final unreadCount = (data['unreadCount']?[userId] ?? 0) as int;
+        total += unreadCount;
+      }
+      return total;
+    });
   }
 } 

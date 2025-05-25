@@ -7,6 +7,25 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:640391418655:android:12d7c08157d93353ef162a",
+        "android_client_info": {
+          "package_name": "com.example.gym_app_project"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqO8Bj_UyofM_FztAT1IbUIcIerbKdcAo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:640391418655:android:b5db12b4a6bcc552ef162a",
         "android_client_info": {
           "package_name": "com.gymhub.app"

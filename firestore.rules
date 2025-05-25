@@ -7,7 +7,7 @@ service cloud.firestore {
     }
     
     function isOwner(userId) {
-      return request.auth.uid == userId;
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
     function isPremiumUser() {
@@ -23,6 +23,17 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    function isCourseOwner(courseId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/courses/$(courseId)) &&
+        get(/databases/$(database)/documents/courses/$(courseId)).data.ownerId == request.auth.uid;
+    }
+    
+    function isChatParticipant(chatData) {
+      return isAuthenticated() && 
+        (request.auth.uid == chatData.studentId || request.auth.uid == chatData.instructorId);
     }
 
     // User profiles
@@ -139,65 +150,48 @@ service cloud.firestore {
         && request.resource.data.isPublished is bool;
       
       // Only course creator or admin can update their courses
-      allow update: if isOwner(resource.data.creatorId) || isAdmin()
+      allow update: if isCourseOwner(courseId) || isAdmin()
         || (request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['subscribers', 'isPublished']));
       
       // Only course creator or admin can delete their courses
-      allow delete: if isOwner(resource.data.creatorId) || isAdmin();
+      allow delete: if isCourseOwner(courseId) || isAdmin();
     }
 
     // Chats collection
     match /chats/{chatId} {
-      // Users can only read chats they're part of
-      allow read: if isAuthenticated() && 
-        (request.auth.uid in resource.data.participants);
+      allow read: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid ||
+        resource.data.instructorId == request.auth.uid
+      );
       
-      // Users can create chats if they're a participant
-      allow create: if isAuthenticated()
-        && request.resource.data.participants.hasAll([request.auth.uid])
-        && request.resource.data.courseId is string
-        && request.resource.data.courseTitle is string
-        && request.resource.data.studentId is string
-        && request.resource.data.studentName is string
-        && request.resource.data.instructorId is string
-        && request.resource.data.instructorName is string
-        && request.resource.data.lastMessageTime is timestamp
-        && request.resource.data.lastMessage is string
-        && request.resource.data.isRead is bool;
+      allow create: if isAuthenticated() && (
+        request.resource.data.studentId == request.auth.uid ||
+        request.resource.data.instructorId == request.auth.uid
+      );
       
-      // Users can update chats they're part of
-      allow update: if isAuthenticated() && 
-        (request.auth.uid in resource.data.participants);
+      allow update: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid ||
+        resource.data.instructorId == request.auth.uid
+      );
       
-      // Users can delete chats they're part of
-      allow delete: if isAuthenticated() && 
-        (request.auth.uid in resource.data.participants);
-
-      // Chat messages subcollection
+      allow delete: if false; // Don't allow chat deletion
+      
+      // Messages subcollection rules
       match /messages/{messageId} {
-        // Users can read messages in chats they're part of
-        allow read: if isAuthenticated() && 
-          (request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants);
+        allow read: if isAuthenticated() && (
+          get(/databases/$(database)/documents/chats/$(chatId)).data.studentId == request.auth.uid ||
+          get(/databases/$(database)/documents/chats/$(chatId)).data.instructorId == request.auth.uid
+        );
         
-        // Users can create messages in chats they're part of
-        allow create: if isAuthenticated()
-          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
-          && request.resource.data.senderId == request.auth.uid
-          && request.resource.data.senderName is string
-          && request.resource.data.content is string
-          && request.resource.data.timestamp is timestamp
-          && request.resource.data.isRead is bool;
+        allow create: if isAuthenticated() && (
+          get(/databases/$(database)/documents/chats/$(chatId)).data.studentId == request.auth.uid ||
+          get(/databases/$(database)/documents/chats/$(chatId)).data.instructorId == request.auth.uid
+        ) && request.resource.data.senderId == request.auth.uid;
         
-        // Users can update messages they sent
-        allow update: if isAuthenticated()
-          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+        allow update: if false; // Don't allow message updates
         
-        // Users can delete messages they sent
-        allow delete: if isAuthenticated()
-          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
-          && resource.data.senderId == request.auth.uid;
+        allow delete: if false; // Don't allow message deletion
       }
     }
 
@@ -268,10 +262,11 @@ service cloud.firestore {
       
       // Authenticated users can create reports
       allow create: if isAuthenticated() 
-        && request.resource.data.postId is string
         && request.resource.data.reportedBy == request.auth.uid
         && request.resource.data.timestamp is timestamp
         && request.resource.data.reason is string
+        && request.resource.data.postId is string
+        && request.resource.data.type is string
         && (!('status' in request.resource.data) || request.resource.data.status == 'pending');
       
       // Only admins can update reports (to mark as resolved or dismissed)
@@ -281,6 +276,16 @@ service cloud.firestore {
       
       // Only admins can delete reports
       allow delete: if isAdmin();
+    }
+
+    // Enrollments collection
+    match /enrollments/{enrollmentId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isCourseOwner(resource.data.courseId)
+      );
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
     }
   }
 } 

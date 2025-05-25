@@ -212,8 +212,8 @@ class _DrawerContentState extends State<DrawerContent> {
               onTap: () {
                 Navigator.pop(context);
                 Navigator.pushNamed(context, '/gym-management');
-              },
-            ),
+            },
+          ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
@@ -265,6 +265,9 @@ class HomePage extends StatelessWidget {
         'postId': postId,
         'reportedBy': _auth.currentUser?.uid,
         'timestamp': FieldValue.serverTimestamp(),
+        'reason': 'Inappropriate content',
+        'status': 'pending',
+        'type': 'post'
       });
     } catch (e) {
       print('Error reporting post: $e');

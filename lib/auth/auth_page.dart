@@ -74,6 +74,94 @@ class _AuthPageState extends State<AuthPage> {
     }
   }
 
+  Future<void> _showResetPasswordDialog() async {
+    final resetEmailController = TextEditingController();
+    bool isResetting = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Enter your email address and we\'ll send you a link to reset your password.',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: resetEmailController,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                prefixIcon: Icon(Icons.email),
+              ),
+              keyboardType: TextInputType.emailAddress,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: isResetting ? null : () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: isResetting
+                ? null
+                : () async {
+                    if (resetEmailController.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please enter your email address'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+
+                    setState(() => isResetting = true);
+
+                    try {
+                      await _authService.resetPassword(resetEmailController.text.trim());
+                      if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Password reset email sent. Please check your inbox.',
+                            ),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(e.toString()),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    } finally {
+                      if (mounted) {
+                        setState(() => isResetting = false);
+                      }
+                    }
+                  },
+            child: isResetting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Reset Password'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -169,6 +257,19 @@ class _AuthPageState extends State<AuthPage> {
                                 return null;
                               },
                             ),
+                            if (isLogin) ...[
+                              const SizedBox(height: 10),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton(
+                                  onPressed: isLoading ? null : _showResetPasswordDialog,
+                                  child: const Text(
+                                    'Forgot Password?',
+                                    style: TextStyle(color: Colors.black),
+                                  ),
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 30),
                             ElevatedButton(
                               onPressed: isLoading ? null : _handleSubmit,

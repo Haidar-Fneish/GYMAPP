@@ -110,17 +110,17 @@ class _CoursesPageState extends State<CoursesPage> with SingleTickerProviderStat
               ),
               Expanded(
                 child: StreamBuilder<List<Course>>(
-                  stream: _courseService.getPublishedCourses(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return Center(child: Text('Error: ${snapshot.error}'));
-                    }
+            stream: _courseService.getPublishedCourses(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              }
 
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-                    final courses = snapshot.data ?? [];
+              final courses = snapshot.data ?? [];
                     final filteredCourses = courses.where((course) {
                       return course.title.toLowerCase().contains(_searchQuery) ||
                           course.description.toLowerCase().contains(_searchQuery) ||
@@ -135,44 +135,44 @@ class _CoursesPageState extends State<CoursesPage> with SingleTickerProviderStat
                               : 'No courses found matching "$_searchQuery"',
                           style: const TextStyle(fontSize: 16),
                         ),
-                      );
-                    }
+                );
+              }
 
-                    return ListView.builder(
-                      padding: const EdgeInsets.all(16),
+              return ListView.builder(
+                padding: const EdgeInsets.all(16),
                       itemCount: filteredCourses.length,
-                      itemBuilder: (context, index) {
+                itemBuilder: (context, index) {
                         final course = filteredCourses[index];
-                        final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-                        final alreadySubscribed = course.subscribers.contains(currentUserId);
-                        return CourseCard(
-                          course: course,
-                          isSubscribed: alreadySubscribed,
-                          onSubscribe: () {
-                            if (alreadySubscribed) {
-                              // Show popup message
-                              showDialog(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: const Text('Already Subscribed'),
-                                  content: const Text('You are already subscribed (:'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('OK'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            } else {
-                              _courseService.subscribeToCourse(course.id);
-                            }
-                          },
-                          onUnsubscribe: () => _courseService.unsubscribeFromCourse(course.id),
+                  final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+                  final alreadySubscribed = course.subscribers.contains(currentUserId);
+                  return CourseCard(
+                    course: course,
+                    isSubscribed: alreadySubscribed,
+                    onSubscribe: () {
+                      if (alreadySubscribed) {
+                        // Show popup message
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Already Subscribed'),
+                            content: const Text('You are already subscribed (:'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('OK'),
+                              ),
+                            ],
+                          ),
                         );
-                      },
-                    );
-                  },
+                      } else {
+                        _courseService.subscribeToCourse(course.id);
+                      }
+                    },
+                    onUnsubscribe: () => _courseService.unsubscribeFromCourse(course.id),
+                  );
+                },
+              );
+            },
                 ),
               ),
             ],

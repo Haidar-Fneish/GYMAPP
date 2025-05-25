@@ -12,6 +12,31 @@ class AuthService {
   // Auth state changes stream
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
+  // Reset password
+  Future<void> resetPassword(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+    } on FirebaseAuthException catch (e) {
+      String message;
+      switch (e.code) {
+        case 'user-not-found':
+          message = 'No user found with this email.';
+          break;
+        case 'invalid-email':
+          message = 'The email address is not valid.';
+          break;
+        case 'user-disabled':
+          message = 'This user has been disabled.';
+          break;
+        default:
+          message = 'An error occurred. Please try again.';
+      }
+      throw message;
+    } catch (e) {
+      throw 'An unexpected error occurred. Please try again.';
+    }
+  }
+
   // Sign in with email and password
   Future<UserCredential> signInWithEmailAndPassword(
       String email, String password) async {

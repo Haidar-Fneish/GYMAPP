@@ -174,12 +174,46 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  List<Message> _messages = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _chatService.markChatAsRead(widget.chat.id);
     _chatService.markMessagesAsRead(widget.chat.id);
+    _loadInitialMessages();
+  }
+
+  Future<void> _loadInitialMessages() async {
+    try {
+      final messages = await _chatService
+          .getChatMessages(widget.chat.id)
+          .first;
+      if (mounted) {
+        setState(() {
+          _messages = messages;
+          _isLoading = false;
+        });
+        _scrollToBottom();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading messages: $e')),
+        );
+      }
+    }
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   @override
@@ -189,22 +223,23 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
     if (message.isEmpty) return;
 
-    _chatService.sendMessage(
+    try {
+      await _chatService.sendMessage(
       chatId: widget.chat.id,
       content: message,
     );
-
     _messageController.clear();
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sending message: $e')),
       );
+      }
     }
   }
 
@@ -242,7 +277,9 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: StreamBuilder<List<Message>>(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : StreamBuilder<List<Message>>(
               stream: _chatService.getChatMessages(widget.chat.id),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
@@ -343,6 +380,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       border: InputBorder.none,
                     ),
                     maxLines: null,
+                    onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
                 IconButton(
